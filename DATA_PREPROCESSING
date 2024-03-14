@@ -1,0 +1,316 @@
+import cv2
+import numpy as np
+from skimage.feature import local_binary_pattern
+from skimage import segmentation
+import os
+import glob
+
+
+from sklearn.decomposition import PCA
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.models import Sequential
+from PIL import Image
+from tensorflow.keras.optimizers import Adam
+
+
+def face_detection(Frame):
+    face_cascade = cv2.CascadeClassifier('/Users/appleuser/Desktop/job/witi/ecom-jobs-process/jobs/uam/biometrics/labII/haarcascade_frontalface_default.xml')
+    img = cv2.cvtColor(Frame, cv2.COLOR_BGR2GRAY)
+    # Detect faces in the grayscale image
+    faces = face_cascade.detectMultiScale(img, 1.1, 4)
+
+    # Initialize face_crop
+    face_crop = None
+
+    # Crop faces and save them
+    for i, (x, y, w, h) in enumerate(faces):
+        # Crop the face from the original image
+        face_crop = img[y:y+h, x:x+w]
+        break  # Break the loop after the first face is detected
+
+    return face_crop
+
+
+# def load_face_dateset(dataset_path):
+    
+#     dir = os.listdir(dataset_path)
+#     real_img_data = os.listdir(os.path.join(dataset_path, dir[1]))
+
+#     Faces = []
+#     Labels = []
+
+#     for sub_dir in real_img_data:
+#         real_img_files = glob.glob(os.path.join(dataset_path, dir[1], sub_dir) + "/*.jpg")
+#         for image_path in real_img_files:
+#             image_e = cv2.imread(image_path)
+#             print(image_path)
+#             face_crop = face_detction(image_e)
+#             if face_crop is not None:  # Check if a face is detected
+#                 face_crop = cv2.resize(face_crop, (400, 400))
+#                 Faces.append(face_crop)
+#                 Labels.append(1)
+#                 #cv2.imshow("frame", face_crop)
+#             if cv2.waitKey(1) & 0xFF == ord('q'):
+#                 break
+
+#     cv2.destroyAllWindows()
+
+#     Faces = np.array(Faces)
+#     Labels = np.array(Labels)
+
+#     return Faces, Labels
+
+def load_face_dateset(dataset_path):
+    dir = os.listdir(dataset_path)
+    real_img_data = os.listdir(os.path.join(dataset_path, dir[1]))
+
+    Faces = []
+    Labels = []
+
+    # Define the new cropped images directory
+    cropped_dir = os.path.join(dataset_path, "cropped/fake")
+    if not os.path.exists(cropped_dir):
+        os.makedirs(cropped_dir)
+
+    for sub_dir in real_img_data:
+        # Make corresponding subdirectory inside the cropped directory
+        sub_dir_path = os.path.join(cropped_dir, sub_dir)
+        if not os.path.exists(sub_dir_path):
+            os.makedirs(sub_dir_path)
+
+        real_img_files = glob.glob(os.path.join(dataset_path, dir[1], sub_dir) + "/*.jpg")
+        for image_path in real_img_files:
+            image_e = cv2.imread(image_path)
+            print(image_path)
+            face_crop = face_detection(image_e)
+            if face_crop is not None:  # Check if face is detected
+                face_crop = cv2.resize(face_crop, (400, 400))
+                Faces.append(face_crop)
+                Labels.append(1)
+                
+                # Save the cropped image to the new directory
+                cropped_image_path = os.path.join(sub_dir_path, os.path.basename(image_path))
+                cv2.imwrite(cropped_image_path, face_crop)
+
+            # Break if 'q' is pressed
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+    cv2.destroyAllWindows()
+
+    Faces = np.array(Faces)
+    Labels = np.array(Labels)
+
+    return Faces, Labels
+
+
+
+# def eigenfaces(pcaFaces):
+#     print("[INFO] creating eigenfaces...")
+#     pca = PCA(
+#         svd_solver="randomized",
+#         n_components=372,  # Adjust the number of components as needed for clarity
+#         whiten=True
+#     )
+#     start = time.time()
+#     trainX = pca.fit_transform(pcaFaces)
+#     end = time.time()
+#     print("[INFO] computing eigenfaces took {:.4f} seconds".format(
+#         end - start))
+
+#     # Visualize the eigenfaces
+#     eigenfaces = pca.components_.reshape((372, 400, 400))  # Assuming 100 components
+#     cv2.imshow("eigen", eigenfaces[0])
+#     cv2.waitKey(0)
+#     plt.figure(figsize=(10, 5))
+#     for i in range(20):  # Visualize first 10 eigenfaces
+#         plt.subplot(4, 5, i + 1)
+#         plt.imshow(eigenfaces[i], cmap='gray')
+#         plt.axis('off')
+#     plt.show()
+
+
+
+
+def apply_canny_to_dataset(dataset_path, output_path):
+    # Crear la estructura de directorio en output_path si no existe
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    # Recorrer el directorio del dataset
+    for root, dirs, files in os.walk(dataset_path):
+        for file in files:
+            if file.lower().endswith(".jpg"):  # Suponiendo que las imágenes son .jpg
+                # Obtener la ruta completa de la imagen actual
+                image_path = os.path.join(root, file)
+
+                # Definir la nueva ruta de la imagen con canny aplicado
+                relative_path = os.path.relpath(root, dataset_path)
+                canny_dir = os.path.join(output_path, relative_path)
+
+                # Crear el directorio si no existe
+                if not os.path.exists(canny_dir):
+                    os.makedirs(canny_dir)
+
+                # Aplicar la función para eliminar el fondo (que incluye Canny)
+                edges_image = remove_background_lbp(image_path)
+
+                # Guardar la imagen procesada en la nueva ubicación
+                cv2.imwrite(os.path.join(canny_dir, file), edges_image)
+
+
+
+
+
+# def remove_background_lbp(image_path):
+#     # Cargar la imagen y convertirla a escala de grises
+#     image = cv2.imread(image_path)
+#     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+#     # Aplicar detección de bordes Canny
+#     edges = cv2.Canny(gray_image, 80, 40)
+
+    
+
+#     # Mostrar la imagen resultante con las líneas
+#     cv2.imshow('edges', edges)
+#     cv2.waitKey(0)
+#     cv2.destroyAllWindows()
+                
+
+def remove_background_lbp(image_path):
+    # Cargar la imagen y convertirla a escala de grises
+    image = cv2.imread(image_path)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Aplicar detección de bordes Canny
+    edges = cv2.Canny(gray_image, 80, 40)
+
+    return edges
+
+
+
+development_dir = '/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_1/cropped_cannyApplication/development'
+evaluation_dir = '/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_2_3/cropped_cannyApplication/evaluation'
+
+def get_image_dimensions(image_paths):
+    dimensions = []
+    for img_path in image_paths:
+        if not img_path.endswith(('.png', '.jpg', '.jpeg')):
+            continue
+        with Image.open(img_path) as img:
+            dimensions.append(img.size)
+    return np.array(dimensions)
+
+# def dimensions_output(image_paths):
+#     all_image_dimensions = get_image_dimensions(image_paths)
+#     avg_dims = np.mean(all_image_dimensions, axis=0)
+#     median_dims = np.median(all_image_dimensions, axis=0)
+#     max_dims = np.max(all_image_dimensions, axis=0)
+#     min_dims = np.min(all_image_dimensions, axis=0)
+
+#     print(f"Average dimensions: {avg_dims}")
+#     print(f"Median dimensions: {median_dims}")
+#     print(f"Max dimensions: {max_dims}")
+#     print(f"Min dimensions: {min_dims}")
+
+#     return avg_dims, median_dims, max_dims, min_dims
+
+
+# def model_creation(development_dir,evaluation_dir):
+
+#      # Determine average image dimensions
+#     avg_dims, _, _, _ = dimensions_output(train_fake_images + train_real_images)
+
+#     # Define image size for the model based on average dimensions
+#     image_size = tuple(map(int, avg_dims))
+
+#     # Data generators
+#     train_datagen = ImageDataGenerator(rescale=1./255)
+#     eval_datagen = ImageDataGenerator(rescale=1./255)
+
+#     train_generator = train_datagen.flow_from_directory(
+#         development_dir,
+#         target_size=image_size,
+#         batch_size=10,  #minimize
+#         class_mode='binary'
+#     )
+
+#     eval_generator = eval_datagen.flow_from_directory(
+#         evaluation_dir,
+#         target_size=image_size,
+#         batch_size=10,  #minize
+#         class_mode='binary'
+#     )
+
+#     # CNN model architecture
+#     model = Sequential([
+#         Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=(*image_size, 3)),
+#         BatchNormalization(),
+#         MaxPooling2D(2, 2),
+        
+#         Conv2D(64, (3, 3), activation='relu', padding='same'),
+#         BatchNormalization(),
+#         MaxPooling2D(2, 2),
+        
+#         Conv2D(128, (3, 3), activation='relu', padding='same'),
+#         BatchNormalization(),
+#         MaxPooling2D(2, 2),
+        
+#         Flatten(),
+#         Dense(512, activation='relu'),
+#         Dropout(0.5),
+#         BatchNormalization(),
+#         Dense(1, activation='sigmoid')
+#     ])
+
+#     # Compile the model with a learning rate schedule
+#     from tensorflow.keras.callbacks import ReduceLROnPlateau
+
+#     model.compile(optimizer=Adam(lr=0.001), loss='binary_crossentropy', metrics=['accuracy'])
+#     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.0001)
+
+#     # Train the model with Early Stopping and ReduceLROnPlateau
+#     from tensorflow.keras.callbacks import EarlyStopping
+
+#     early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
+#     history = model.fit(
+#         train_generator,
+#         epochs=10,  # increased number of epochs
+#         validation_data=eval_generator,
+#         callbacks=[reduce_lr, early_stopping]
+#     )
+
+#     # Evaluate the model
+#     eval_loss, eval_accuracy = model.evaluate(eval_generator)
+#     print(f"Evaluation accuracy: {eval_accuracy}")
+
+#     print(f"Eval loss: {eval_loss}")
+    
+#     # Save the model
+#     model.save('biometric_recognition_model_f.h5')
+
+    
+if __name__ == '__main__':
+    #faces , labesl = load_face_dateset('/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_2_3/evaluation') 
+    # print('l')
+    #remove_background_lbp('/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_1/cropped/development/fake/0001_fake/fake.000312.jpg')
+    apply_canny_to_dataset('/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_2_3/evaluation/cropped', '/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_2_3/evaluation/cropped_cannyApplication')
+    # train_fake_images = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(os.path.join(development_dir, "fake"))) for f in fn if f.endswith(('.png', '.jpg', '.jpeg'))]
+    # train_real_images = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(os.path.join(development_dir, "real"))) for f in fn if f.endswith(('.png', '.jpg', '.jpeg'))]
+    # eval_fake_images = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(os.path.join(evaluation_dir, "fake"))) for f in fn if f.endswith(('.png', '.jpg', '.jpeg'))]
+    # eval_real_images = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(os.path.join(evaluation_dir, "real"))) for f in fn if f.endswith(('.png', '.jpg', '.jpeg'))]
+    # model_creation(development_dir,evaluation_dir)
+
+    #remove_background_lbp('/Users/appleuser/Desktop/uam/biometric-recognition/labII/Task_1/development/fake/0012_fake/fake.002952.jpg')
+
+
+
+
